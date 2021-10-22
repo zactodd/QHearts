@@ -1,5 +1,5 @@
-from typing import Set
-from hearts import facts
+from typing import Set, Tuple
+from hearts import facts, utils
 
 
 class Player:
@@ -37,3 +37,21 @@ class Player:
 
     def start_round(self, hand: Set['Card']) -> None:
         self.hand = hand
+
+    def input_give(self, player: 'Player') -> Tuple['Card', 'Card', 'Card']:
+        give = None
+        while give is None:
+            s = input(f'Input three cards as separated by a space to give to {player.seat}.\\'
+                      f'For example, "CA HQ S10" would give the Ace of Clubs, Queen of Hearts and the 10 of spades.')
+            try:
+                cards = utils.str_to_card(s)
+                if len(cards) == 3:
+                    give = tuple(cards)
+            except:
+                pass
+        return give
+
+    def random_give(self, player: 'Player') -> Tuple['Card', 'Card', 'Card']:
+       return tuple(self.hand)[:3]
+
+
