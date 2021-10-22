@@ -5,7 +5,7 @@ from hearts import facts
 class Player:
     def __init__(self, seat: 'Seat') -> None:
         self.seat: 'Seat' = seat
-        self.won: Set['Card']  = set()
+        self.won: Set['Card'] = set()
         self.hand: Set['Card'] = set()
         self.points: int = 0
 
@@ -19,15 +19,15 @@ class Player:
     def get(self, cards: Set['Card']) -> None:
         self.hand |= cards
 
-    def can_play(self, suit: 'Suit') -> Set['Cards']:
+    def can_play(self, suit: 'Suit') -> Set['Card']:
         return {c for c in self.hand if c.suit == suit}
 
-    def win(self, cards: Set['Cards']) -> None:
+    def win(self, cards: Set['Card']) -> None:
         self.won |= cards
         for c in cards:
             if c.suit == facts.SUIT.HEARTS:
                 self.points += 1
-            elif c.face == 13 and c.suit == facts.SUIT.SPADES:
+            elif c.face == facts.FACE.QUEEN and c.suit == facts.SUIT.SPADES:
                 self.points += 13
 
     def end_round(self) -> None:
@@ -35,5 +35,5 @@ class Player:
         self.hand = set()
         self.points = 0
 
-    def start_round(self, hand: Set['card']) -> None:
+    def start_round(self, hand: Set['Card']) -> None:
         self.hand = hand
