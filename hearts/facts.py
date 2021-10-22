@@ -3,10 +3,17 @@ from hearts.card import Card
 
 
 class SUIT(Enum):
-    CLUBS = 'CLUBS'
-    SPADES = 'SPADES'
-    HEARTS = 'HEARTS'
-    DIAMONDS = 'DIAMONDS'
+    CLUBS = 'C'
+    SPADES = 'S'
+    HEARTS = 'H'
+    DIAMONDS = 'D'
+
+
+class DIRECTION(Enum):
+    LEFT = -1
+    RIGHT = 1
+    ACROSS = 2
+    KEEP = 0
 
 
 class FACE(Enum):
@@ -23,6 +30,13 @@ class FACE(Enum):
     JACK = 'J'
     QUEEN = 'Q'
     KING = 'K'
+
+
+class SEATS(Enum):
+    NORTH = 0
+    EAST = 1
+    SOUTH = 2
+    WEST = 3
 
 
 DECK = tuple(Card(f, s) for f in FACE for s in SUIT)
