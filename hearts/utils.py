@@ -1,6 +1,6 @@
 from hearts import facts
 from hearts.card import Card
-from typing import List, Set
+from typing import List, Set, Iterable
 import random
 
 
@@ -15,4 +15,4 @@ def str_to_card(s: str) -> Set['Card']:
 
 
 def score_card(lead: 'Suit', card: 'Card') -> int:
-    return facts.FACE_VALUES[card.face] if card.suit == lead else 0
+    return facts.FACE_VALUES[card.face.name].value if card.suit == lead else 0

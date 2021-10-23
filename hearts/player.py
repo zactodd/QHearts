@@ -24,7 +24,7 @@ def input_give(self, player: 'Player') -> THREE_CARDS:
 
 
 def random_give(self, player: 'Player') -> THREE_CARDS:
-    return tuple(self.hand)[:3]
+    return set(list(self.hand)[:3])
 
 
 # Play
@@ -58,8 +58,8 @@ class Player:
         self.hand: Set['Card'] = set()
         self.score: int = 0
 
-        self.select_play: PLAY_F = play_func
-        self.select_give: GIVE_F = give_func
+        self.select_play: PLAY_F = lambda *args, **kwargs: play_func(self, *args, **kwargs)
+        self.select_give: GIVE_F = lambda *args, **kwargs: give_func(self, *args, **kwargs)
 
     def give(self, p: 'Player', cards: Set['Card']) -> None:
         p.get(cards)
@@ -71,7 +71,7 @@ class Player:
     def get(self, cards: Set['Card']) -> None:
         self.hand |= cards
 
-    def can_play(self, broke_hearts: bool, suit: 'Suit', first_turn: bool = False) -> Set['Card']:
+    def can_play(self, suit: 'Suit', broke_hearts: bool, first_turn: bool = False) -> Set['Card']:
         if suit is None:
             if first_turn:
                 assert facts.TWO_OF_CLUBS in self.hand, "Two of Clubs not in hand."
@@ -80,6 +80,8 @@ class Player:
                 cards = self.hand
             else:
                 cards = {c for c in self.hand if c.suit != facts.SUIT.HEARTS}
+            if len(cards) == 0:
+                cards = self.hand
         else:
             cards = {c for c in self.hand if c.suit == suit}
             if len(cards) == 0:

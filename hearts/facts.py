@@ -10,8 +10,8 @@ class SUIT(Enum):
 
 
 class DIRECTION(Enum):
-    LEFT = -1
-    RIGHT = 1
+    LEFT = 1
+    RIGHT = -1
     ACROSS = 2
     KEEP = 0
 

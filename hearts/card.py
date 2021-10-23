@@ -3,14 +3,11 @@ class Card:
         self.face = face
         self.suit = suit
 
-    def __str__(self) -> str:
+    def __repr__(self) -> str:
         return f'{self.suit.value}{self.face.value}'
 
-    def __repr__(self):
-        return self.__str__()
-
     def __key(self):
-        return self.face, self.suit
+        return self.suit, self.face
 
     def __hash__(self) -> int:
         return hash(self.__key())
@@ -18,5 +15,10 @@ class Card:
     def __eq__(self, other) -> bool:
         if isinstance(other, Card):
             return self.__key() == other.__key()
+        return NotImplemented
+
+    def __lt__(self, other):
+        if isinstance(other, Card):
+            return self.__key() < self.__key()
         return NotImplemented
 
