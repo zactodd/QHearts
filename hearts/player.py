@@ -28,13 +28,13 @@ def random_give(self, player: 'Player') -> THREE_CARDS:
 
 
 # Play
-PLAY_F = Callable[['Suit', bool], 'card']
+PLAY_F = Callable[['Suit', bool, bool], 'card']
 
 
-def input_move(self, lead: 'Suit', broke_hearts: bool) -> 'Card':
+def input_move(self, lead: 'Suit', broke_hearts: bool, is_first: bool) -> 'Card':
     play = None
     print(f'Hand: {self.hand}')
-    valid_cards = self.can_play(lead, broke_hearts)
+    valid_cards = self.can_play(lead, broke_hearts, is_first)
     print(f'Valid: {valid_cards}')
     while play is None:
         s = input(f'Input a valid card from your hand to play.\\For example, "HQ" would give the Queen of Hearts.')
@@ -47,8 +47,8 @@ def input_move(self, lead: 'Suit', broke_hearts: bool) -> 'Card':
     return play
 
 
-def random_play(self, lead: 'Suit', broke_hearts: bool) -> 'Card':
-    return next(iter(self.can_play(lead, broke_hearts)))
+def random_play(self, lead: 'Suit', broke_hearts: bool, is_first: bool) -> 'Card':
+    return next(iter(self.can_play(lead, broke_hearts, is_first)))
 
 
 class Player:
@@ -56,7 +56,7 @@ class Player:
         self.seat: 'Seat' = seat
         self.won: Set['Card'] = set()
         self.hand: Set['Card'] = set()
-        self.points: int = 0
+        self.score: int = 0
 
         self.select_play: PLAY_F = play_func
         self.select_give: GIVE_F = give_func
@@ -88,19 +88,18 @@ class Player:
                     cards = self.hand
         return cards
 
-
     def win(self, cards: Set['Card']) -> None:
         self.won |= cards
         for c in cards:
             if c.suit == facts.SUIT.HEARTS:
-                self.points += 1
+                self.score += 1
             elif c == facts.QUEEN_OF_SPADES:
-                self.points += 13
+                self.score += 13
 
     def end_round(self) -> None:
         self.won = set()
         self.hand = set()
-        self.points = 0
+        self.score = 0
 
     def start_round(self, hand: Set['Card']) -> None:
         self.hand = hand
