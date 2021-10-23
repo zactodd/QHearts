@@ -10,7 +10,7 @@ class Game:
     def __init__(self) -> None:
         self._seat_players: Dict['Seat': Player] = {s: Player(s) for s in facts.SEATS}
         self._seat_score = Counter({s: 0 for s in facts.SEATS})
-        self.players = self._seat_players.values()
+        self.players = set(self._seat_players.values())
 
     def get_player(self, seat: 'Seat') -> 'Player':
         return self._seat_players[seat]
@@ -33,7 +33,7 @@ class Game:
         directions = cycle(iter(facts.DIRECTION))
         rounds = 0
         while all(s < 100 for s in self._seat_score.values()):
-            Round(self, next(directions)).play_round(True)
+            Round(self.players, next(directions)).play_round(False)
             self.score_round()
             if verbose:
                 print(f'{rounds}: {self}')
