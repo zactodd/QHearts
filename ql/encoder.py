@@ -15,11 +15,13 @@ def obs_round_encoder(player, round):
             state[i, facts.DECK.index(c)] = (p.seat.value + seat_adj) % 4
 
     for c in player.hand:
-        state[13, facts.DECK.index(c)] = 1
+        state[15, facts.DECK.index(c)] = 1
 
     if round.gives:
-        for c in round.gives[player]:
-            state[13, facts.DECK.index(c)] = round.direction.value % 4
-        for c in round.gives[round.player_seats[facts.SEATS((player.seat.value - round.direction.value) % 4)]]:
+        if player in round.gives:
+            for c in round.gives[player][1]:
+                state[13, facts.DECK.index(c)] = round.direction.value % 4
+        p = round.player_seats[facts.SEATS((player.seat.value - round.direction.value) % 4).value]
+        for c in round.gives[p][1]:
             state[14, facts.DECK.index(c)] = (-round.direction.value) % 4
     return state
