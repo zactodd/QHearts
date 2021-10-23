@@ -12,3 +12,7 @@ def shuffle_deck() -> List['Card']:
 
 def str_to_card(s: str) -> Set['Card']:
     return {Card(facts.SUIT(cs[0]), facts.FACE(cs[1:])) for cs in s.split()}
+
+
+def score_card(lead: 'Suit', card: 'Card') -> int:
+    return facts.FACE_VALUES[card.face] if card.suit == lead else 0
