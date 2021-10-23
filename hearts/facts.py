@@ -57,4 +57,4 @@ class SEATS(Enum):
 
 TWO_OF_CLUBS = Card(FACE.TWO, SUIT.CLUBS)
 QUEEN_OF_SPADES = Card(FACE.QUEEN, SUIT.SPADES)
-DECK = tuple(Card(f, s) for f in FACE for s in SUIT)
+DECK = tuple(sorted(Card(f, s) for f in FACE for s in SUIT))
