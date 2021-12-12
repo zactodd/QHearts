@@ -56,10 +56,12 @@ class Player:
         self.seat: 'Seat' = seat
         self.won: Set['Card'] = set()
         self.hand: Set['Card'] = set()
+        self.starting_hand = None
         self.score: int = 0
 
         self.select_play: PLAY_F = lambda *args, **kwargs: play_func(self, *args, **kwargs)
         self.select_give: GIVE_F = lambda *args, **kwargs: give_func(self, *args, **kwargs)
+
 
     def give(self, p: 'Player', cards: Set['Card']) -> None:
         p.get(cards)
@@ -74,7 +76,7 @@ class Player:
     def can_play(self, suit: 'Suit', broke_hearts: bool, first_turn: bool = False) -> Set['Card']:
         if suit is None:
             if first_turn:
-                assert facts.TWO_OF_CLUBS in self.hand, "Two of Clubs not in hand."
+                assert facts.TWO_OF_CLUBS in self.hand, f"Two of Clubs not in hand. {self.hand}, {self.seat}"
                 cards = {facts.TWO_OF_CLUBS}
             elif broke_hearts:
                 cards = self.hand
@@ -105,3 +107,4 @@ class Player:
 
     def start_round(self, hand: Set['Card']) -> None:
         self.hand = hand
+        self.starting_hand = list(self.hand)
