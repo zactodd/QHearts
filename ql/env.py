@@ -18,7 +18,7 @@ class HeartsEnv(Env):
         self.player_seats = {p.seat.value: p for p in self.players}
 
         self.action_space = Discrete(13)
-        self.observation_space = Box(0, 3, shape=(16, 52))
+        self.observation_space = Box(0, 13, shape=(2, 52))
         self.state = np.zeros((16, 52))
 
         self.lead = None
@@ -28,6 +28,8 @@ class HeartsEnv(Env):
         self.gives = dict()
         self.played_cards = {}
         self.turns = []
+        self.num_invalid = 0
+        self.total_invalid = 0
 
         self.seat_value = player.seat.value
         self.seat_adj = facts.SEATS.NORTH.value - player.seat.value
@@ -60,17 +62,19 @@ class HeartsEnv(Env):
 
     def step(self, action):
         if self.to_give > 0:
-            (state, reward, done, info), valid = self._give_step(action)
+            (self.state, reward, done, info), valid = self._give_step(action)
             if valid:
+                self.num_invalid = 0
                 self.to_give -= 1
                 if self.to_give == 0:
                     self._resolve_gives()
                     next(self._turns_iter)
-                state = obs_round_encoder(self.player, self)
-            return state, reward, done, info
+                self.state = obs_round_encoder(self.player, self)
+                return self.state, reward, done, info
         else:
-            (state, reward, done, info), valid = self._turn_step(action)
+            (self.state, reward, done, info), valid = self._turn_step(action)
             if valid:
+                self.num_invalid = 0
                 self.num_turns += 1
                 self.is_first = False
 
@@ -81,15 +85,24 @@ class HeartsEnv(Env):
                     reward = self.score()
                     done = True
                     print()
-                    print(f'Score: {reward}')
+                    print(f'Score: {reward}, Fails: {self.total_invalid}')
                     print(', '.join(f'{p.seat.name}: {p.score}' for p in self.players))
                 else:
                     next(self._turns_iter)
 
-                state = obs_round_encoder(self.player, self)
-                return state, reward, done, info
-            else:
-                return state, reward, done, info
+                self.state = obs_round_encoder(self.player, self)
+                return self.state, reward, done, info
+            self.num_invalid += 1
+            self.total_invalid += 1
+            if self.num_invalid > 15:
+                done = True
+                reward = -(200 + 100 * len(self.player.hand))
+                print()
+                print(f'Failed to Finish, with {len(self.player.hand)} cards: {sorted(self.player.hand)}')
+                valid_actions = [self.player.starting_hand.index(c)
+                                for c in sorted(self.player.can_play(self.lead, self.broken_hearts, self.is_first))]
+                print(f'Action: {action}, valid actions: {valid_actions}')
+            return self.state, reward, done, info
 
     def _deal_cards(self, verbose: bool = False) -> None:
         d = utils.shuffle_deck()
@@ -104,7 +117,6 @@ class HeartsEnv(Env):
     def _give_step(self, action):
         c = self.player.starting_hand[action]
         if c in self.player.hand:
-            self.state[13, facts.DECK.index(c)] = self.direction.value % 4
             if self.player in self.gives:
                 self.gives[self.player][1].add(c)
             else:
@@ -112,12 +124,11 @@ class HeartsEnv(Env):
                 self.gives[self.player] = (seat, {c})
             return (self.state, 0, False, {}), True
         else:
-            return (self.state, -100, False, {}), False
+            return (self.state, -10, False, {}), False
 
     def _turn_step(self, action):
         c = self.player.starting_hand[action]
         if c in self.player.can_play(self.lead, self.broken_hearts, self.is_first):
-            self.state[15, facts.DECK.index(c)] = self.direction.value % 4
 
             # print(f'NORTH, Played: {sorted(self.played_cards.values())}\n'
             #       f'\tHand: {sorted(self.player.hand)}\n'
@@ -128,9 +139,10 @@ class HeartsEnv(Env):
             self.played_cards[self.player] = c
             return (self.state, 0, False, {}), True
         else:
-            return (self.state, -100, False, {}), False
+            return (self.state, -10, False, {}), False
 
     def _turn(self, starting_player: 'Player', verbose: bool = False):
+        self.lead = None
         self.played_cards = {}
         self.turns.append(self.played_cards)
         lead_seat = starting_player.seat
@@ -139,6 +151,7 @@ class HeartsEnv(Env):
             self.lead = self.played_cards[starting_player].suit
         else:
             card = starting_player.select_play(None, self.broken_hearts, self.is_first)
+            self.lead = card.suit
 
             if verbose:
                 print(f'{starting_player.seat.name}, Starting\n'
@@ -147,10 +160,8 @@ class HeartsEnv(Env):
                       f'\t\t-> {card}')
 
             starting_player.play(card)
-            self.lead = card.suit
-
             self.played_cards = {starting_player: card}
-            self.is_first = False
+        self.is_first = False
 
         for i in range(1, 4):
             seat = facts.SEATS((i + lead_seat.value) % 4)
@@ -182,12 +193,12 @@ class HeartsEnv(Env):
 
     def score(self):
         if self.player.score == 26:
-            return 72
+            return 100
         other_scores = [p.score for p in self.others]
         if 26 in other_scores:
-            return -26
+            return 4
         else:
-            return sum(other_scores) - self.player.score
+            return 20 + sum(other_scores) - self.player.score
 
     def render(self):
         pass
@@ -231,20 +242,23 @@ from rl.memory import SequentialMemory
 states = env.observation_space.shape
 actions = env.action_space.n
 
+
 def build_model(states, actions):
     model = Sequential()
     model.add(Flatten(input_shape=(1, *states)))
-    model.add(Dense(24, activation='relu'))
-    model.add(Dense(24, activation='relu'))
+    model.add(Dense(256, activation='relu'))
+    model.add(Dense(256, activation='relu'))
+    model.add(Dense(256, activation='relu'))
+    model.add(Dense(256, activation='relu'))
     model.add(Dense(actions, activation='linear'))
     return model
 
 
 def build_agent(model, actions):
     policy = BoltzmannQPolicy()
-    memory = SequentialMemory(limit=500000, window_length=1)
+    memory = SequentialMemory(limit=50000, window_length=1)
     dqn = DQNAgent(model=model, memory=memory, policy=policy,
-                  nb_actions=actions, nb_steps_warmup=1000, target_model_update=1e-2)
+                  nb_actions=actions, nb_steps_warmup=10000, target_model_update=1e-2)
     return dqn
 
 
@@ -252,5 +266,5 @@ model = build_model(states, actions)
 model.summary()
 
 dqn = build_agent(model, actions)
-dqn.compile(Adam(lr=1e-2), metrics=['mae'])
-dqn.fit(env, nb_steps=5000000, visualize=False, verbose=1)
+dqn.compile(Adam(lr=1e-3), metrics=['mae'])
+dqn.fit(env, nb_steps=500000000, visualize=False, verbose=1)
