@@ -1,6 +1,6 @@
 from hearts import facts
 from hearts.card import Card
-from typing import List, Set, Iterable
+from typing import List, Set
 import random
 
 
