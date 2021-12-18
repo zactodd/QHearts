@@ -1,10 +1,7 @@
 from gym import Env
 from gym.spaces import Discrete, Box
-import numpy as np
-import random
 from hearts.player import Player
-from hearts import facts, utils
-from itertools import repeat, chain
+from hearts import utils
 from ql.encoder import *
 
 
