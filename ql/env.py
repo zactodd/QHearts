@@ -1,267 +1,103 @@
-from gym import Env
-from gym.spaces import Discrete, Box
-from hearts.player import Player
-from hearts import utils
-from ql.encoder import *
+import random
+import numpy as np
+
+# Define card suits and ranks
+suits = ['Hearts', 'Diamonds', 'Clubs', 'Spades']
+ranks = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'Jack', 'Queen', 'King', 'Ace']
+
+# Create a deck of cards
+deck = [(rank, suit) for suit in suits for rank in ranks]
 
 
-OTHER_SEAT = [facts.SEATS.EAST, facts.SEATS.WEST, facts.SEATS.SOUTH]
+# Define the Hearts game environment
+class HeartsGame:
+    def __init__(self, num_players):
+        self.num_players = num_players
+        self.player_hands = [deck[i::num_players] for i in range(num_players)]
+        self.trick = []
+        self.trick_suit = None
+        self.current_player = 0
 
-class HeartsEnv(Env):
-    def __init__(self, player, others, direction=facts.DIRECTION.LEFT):
-        self.player = player
-        self.others = others
-        self.players = {player} | set(others)
-        self.player_seats = {p.seat.value: p for p in self.players}
+    def play_card(self, card_idx):
+        played_card = self.player_hands[self.current_player].pop(card_idx)
+        self.trick.append(played_card)
 
-        self.action_space = Discrete(13)
-        self.observation_space = Box(0, 13, shape=(2, 52))
-        self.state = np.zeros((16, 52))
+        if not self.trick_suit:
+            self.trick_suit = played_card[1]
 
-        self.lead = None
-        self.direction = direction
-        self.broken_hearts = False
-        self.is_first = True
-        self.gives = dict()
-        self.played_cards = {}
-        self.turns = []
-        self.num_invalid = 0
-        self.total_invalid = 0
+        self.current_player = (self.current_player + 1) % self.num_players
 
-        self.seat_value = player.seat.value
-        self.seat_adj = facts.SEATS.NORTH.value - player.seat.value
+    def get_legal_moves(self):
+        legal_moves = []
+        for card_idx, card in enumerate(self.player_hands[self.current_player]):
+            if not self.trick_suit or card[1] == self.trick_suit:
+                legal_moves.append(card_idx)
+        if len(legal_moves) == 0:
+            legal_moves = list(range(len(self.player_hands[self.current_player])))
+        return legal_moves
 
-        self._turns_iter = None
+    def get_state(self):
+        state = tuple(sorted(self.player_hands[self.current_player], key=lambda card: (card[1], card[0])))
+        return state
 
-        if self.direction != facts.DIRECTION.KEEP:
-            self.to_give = 3
+
+# Define a Q-learning based agent
+class QLearningAgent:
+    def __init__(self, num_actions, learning_rate=0.1, discount_factor=0.9, exploration_prob=0.1):
+        self.num_actions = num_actions
+        self.learning_rate = learning_rate
+        self.discount_factor = discount_factor
+        self.exploration_prob = exploration_prob
+        self.q_table = {}
+
+    def choose_move(self, state, legal_moves):
+        if random.uniform(0, 1) < self.exploration_prob:
+            return random.choice(legal_moves)
         else:
-            self.to_give = 0
-        self.num_turns = 0
+            q_values = [self.q_table.get((state, action), 0) for action in range(self.num_actions)]
+            return np.argmax(q_values)
 
-        self.start()
-
-    def start(self, verbose=False):
-        self._deal_cards()
-        if verbose:
-            print(f'{self.direction.name}:')
-
-        for g in OTHER_SEAT:
-            s = facts.SEATS((g.value + self.direction.value) % 4)
-            cards = self.player_seats[s.value].select_give(s)
-            self.gives[self.player_seats[g.value]] = (s, cards)
-
-    def _resolve_gives(self, verbose=False):
-        for g, (r, cards) in self.gives.items():
-            if verbose:
-                print(f'\t{g.seat.name} -> {r.name}: {sorted(cards)}')
-        self._turns_iter = self._turn(next((p for p in self.players if facts.TWO_OF_CLUBS in p.hand)))
-
-    def step(self, action):
-        if self.to_give > 0:
-            (self.state, reward, done, info), valid = self._give_step(action)
-            if valid:
-                self.num_invalid = 0
-                self.to_give -= 1
-                if self.to_give == 0:
-                    self._resolve_gives()
-                    next(self._turns_iter)
-                self.state = obs_round_encoder(self.player, self)
-                return self.state, reward, done, info
-        else:
-            (self.state, reward, done, info), valid = self._turn_step(action)
-            if valid:
-                self.num_invalid = 0
-                self.num_turns += 1
-                self.is_first = False
-
-                sp = next(self._turns_iter)
-                self._turns_iter = self._turn(sp)
-
-                if self.num_turns == 13:
-                    reward = self.score()
-                    done = True
-                    print()
-                    print(f'Score: {reward}, Fails: {self.total_invalid}')
-                    print(', '.join(f'{p.seat.name}: {p.score}' for p in self.players))
-                else:
-                    next(self._turns_iter)
-
-                self.state = obs_round_encoder(self.player, self)
-                return self.state, reward, done, info
-            self.num_invalid += 1
-            self.total_invalid += 1
-            if self.num_invalid > 15:
-                done = True
-                reward = -(200 + 100 * len(self.player.hand))
-                print()
-                print(f'Failed to Finish, with {len(self.player.hand)} cards: {sorted(self.player.hand)}')
-                valid_actions = [self.player.starting_hand.index(c)
-                                for c in sorted(self.player.can_play(self.lead, self.broken_hearts, self.is_first))]
-                print(f'Action: {action}, valid actions: {valid_actions}')
-            return self.state, reward, done, info
-
-    def _deal_cards(self, verbose: bool = False) -> None:
-        d = utils.shuffle_deck()
-        for i, p in enumerate(self.players):
-            i *= 13
-            hand = set(d[i:i + 13])
-            p.start_round(hand)
-
-            if verbose:
-                print(f'{p.seat.name}: {sorted(hand)}')
-
-    def _give_step(self, action):
-        c = self.player.starting_hand[action]
-        if c in self.player.hand:
-            if self.player in self.gives:
-                self.gives[self.player][1].add(c)
-            else:
-                seat = facts.SEATS(self.direction.value % 4)
-                self.gives[self.player] = (seat, {c})
-            return (self.state, 0, False, {}), True
-        else:
-            return (self.state, -10, False, {}), False
-
-    def _turn_step(self, action):
-        c = self.player.starting_hand[action]
-        if c in self.player.can_play(self.lead, self.broken_hearts, self.is_first):
-
-            # print(f'NORTH, Played: {sorted(self.played_cards.values())}\n'
-            #       f'\tHand: {sorted(self.player.hand)}\n'
-            #       f'\tValid: {sorted(self.player.can_play(self.lead, self.broken_hearts, self.is_first))}\n'
-            #       f'\t\t-> {c}')
-
-            self.player.play(c)
-            self.played_cards[self.player] = c
-            return (self.state, 0, False, {}), True
-        else:
-            return (self.state, -10, False, {}), False
-
-    def _turn(self, starting_player: 'Player', verbose: bool = False):
-        self.lead = None
-        self.played_cards = {}
-        self.turns.append(self.played_cards)
-        lead_seat = starting_player.seat
-        if starting_player == self.player:
-            yield
-            self.lead = self.played_cards[starting_player].suit
-        else:
-            card = starting_player.select_play(None, self.broken_hearts, self.is_first)
-            self.lead = card.suit
-
-            if verbose:
-                print(f'{starting_player.seat.name}, Starting\n'
-                      f'\tHand: {sorted(starting_player.hand)}\n'
-                      f'\tValid: {sorted(starting_player.can_play(None, self.broken_hearts, self.is_first))}\n'
-                      f'\t\t-> {card}')
-
-            starting_player.play(card)
-            self.played_cards = {starting_player: card}
-        self.is_first = False
-
-        for i in range(1, 4):
-            seat = facts.SEATS((i + lead_seat.value) % 4)
-
-            player = self.player_seats[seat.value]
-            if player == self.player:
-                yield
-            else:
-                card = player.select_play(self.lead, self.broken_hearts, self.is_first)
-                if verbose:
-                    print(f'{seat.name}, Played: {sorted(self.played_cards.values())}\n'
-                          f'\tHand: {sorted(player.hand)}\n'
-                          f'\tValid: {sorted(player.can_play(self.lead, self.broken_hearts, self.is_first))}\n'
-                          f'\t\t-> {card}')
-
-                player.play(card)
-                self.played_cards.update({player: card})
-
-        if not self.broken_hearts:
-            self.broken_hearts = any(c.face == facts.SUIT.HEARTS for c in self.played_cards.values())
-
-        starting_player = max(self.players, key=lambda p: utils.score_card(self.lead, self.played_cards[p]))
-        starting_player.win(set(self.played_cards.values()))
-
-        if verbose:
-            print(f'Won: {starting_player.seat.name} '
-                  f'-> {self.played_cards[starting_player]}, {sorted(self.played_cards.values())}')
-        yield starting_player
-
-    def score(self):
-        if self.player.score == 26:
-            return 100
-        other_scores = [p.score for p in self.others]
-        if 26 in other_scores:
-            return 4
-        else:
-            return 20 + sum(other_scores) - self.player.score
-
-    def render(self):
-        pass
-
-    def reset(self):
-        for p in (self.player, *self.others):
-            p.end_round()
-        self.__init__(self.player, self.others)
-
-        self.state = obs_round_encoder(self.player, self)
-        return self.state
+    def update_q_table(self, state, action, reward, next_state):
+        current_q = self.q_table.get((state, action), 0)
+        max_next_q = max([self.q_table.get((next_state, next_action), 0) for next_action in range(self.num_actions)])
+        new_q = current_q + self.learning_rate * (reward + self.discount_factor * max_next_q - current_q)
+        self.q_table[(state, action)] = new_q
 
 
-episodes = 1
-init_player = Player(facts.SEATS.NORTH)
-others = [Player(s) for s in OTHER_SEAT]
-env = HeartsEnv(init_player, others)
-# for episode in range(1, episodes + 1):
-#     done = False
-#     score = 0
-#
-#     while not done:
-#         # env.render()
-#         action = env.action_space.sample()
-#         n_state, reward, done, info = env.step(action)
-#         print(n_state)
-#         score += reward
-#         if score < -1000:
-#             break
-#     env.reset()
-#     print('Episode:{} Score:{}'.format(episode, score))
+# Create the Hearts game environment
+game = HeartsGame(num_players=4)
+num_actions = len(game.player_hands[0])
 
+# Create a Q-learning agent
+agent = QLearningAgent(num_actions)
+num_episodes = 1000
 
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Flatten
-from tensorflow.keras.optimizers import Adam
-from rl.agents import DQNAgent
-from rl.policy import BoltzmannQPolicy
-from rl.memory import SequentialMemory
+# Main training loop
+for episode in range(num_episodes):
+    game = HeartsGame(num_players=4)
 
-states = env.observation_space.shape
-actions = env.action_space.n
+    for _ in range(13):  # Play 13 rounds (one for each card)
+        for _ in range(game.num_players):
+            legal_moves = game.get_legal_moves()
+            state = game.get_state()
+            chosen_move = agent.choose_move(state, legal_moves)
 
+            game.play_card(chosen_move)
+            next_state = game.get_state()
 
-def build_model(states, actions):
-    model = Sequential()
-    model.add(Flatten(input_shape=(1, *states)))
-    model.add(Dense(256, activation='relu'))
-    model.add(Dense(256, activation='relu'))
-    model.add(Dense(256, activation='relu'))
-    model.add(Dense(256, activation='relu'))
-    model.add(Dense(actions, activation='linear'))
-    return model
+            # Calculate reward (for a simple example, reward could be -1 for each card played)
+            reward = -1
 
+            agent.update_q_table(state, chosen_move, reward, next_state)
 
-def build_agent(model, actions):
-    policy = BoltzmannQPolicy()
-    memory = SequentialMemory(limit=50000, window_length=1)
-    dqn = DQNAgent(model=model, memory=memory, policy=policy,
-                  nb_actions=actions, nb_steps_warmup=10000, target_model_update=1e-2)
-    return dqn
+        # Determine winner of the trick
+        winning_card = max(game.trick, key=lambda card: (card[1] == game.trick_suit, ranks.index(card[0])))
+        trick_winner = game.trick.index(winning_card)
+        print(f"Player {trick_winner + 1} wins the trick!")
 
+        game.trick = []
+        game.trick_suit = None
 
-model = build_model(states, actions)
-model.summary()
+    print(f"Episode {episode + 1} completed.")
 
-dqn = build_agent(model, actions)
-dqn.compile(Adam(lr=1e-3), metrics=['mae'])
-dqn.fit(env, nb_steps=500000000, visualize=False, verbose=1)
+print("Training complete! Game over.")
